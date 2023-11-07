@@ -9,7 +9,7 @@ import seaborn as sns
 import plotly.graph_objects as go
 from shinywidgets import output_widget, register_widget, reactive_read, render_widget
 
-from util import data_prep, plot_map, timeseries, rf, rf_partialdep, data_prep_model
+from util import data_prep, plot_map, timeseries, rf, rf_partialdep, data_prep_model, svm, svm_partialdep
 
 # default map
 def_loc = pd.read_excel('./data/flux_site_loc_def.xlsx')
@@ -82,7 +82,8 @@ app_ui = ui.page_fluid(
                             "ann" : "Artificial Neural Network"
                         },
                         inline=True
-                    ))
+                    )),
+                    ui.output_ui("val")
             ),
             ui.output_text("params"),
             ui.output_ui("NEE_container"),
@@ -233,6 +234,12 @@ def server(input, output, session):
     ###### ML ######
     best_parameters, score, subplots, model = None, None, None, None
 
+    # testing button
+    @output
+    @render.ui
+    def val():
+        return "You chose " + input.model()
+
     # Read data to train model on
     @reactive.Calc
     @reactive.event(input.file3)
@@ -262,14 +269,21 @@ def server(input, output, session):
     @render.text
     def params():
         df = data_prep_model(parse_train())
-        return rf(df)[:2]
+        print(model())
+        if model() == 'rf':
+            return rf(df)[:2]
+        if model() == 'svm':
+            return svm(df)[:2]
         # return best_parameters, score
         
     # creates the NEE and importance plots
     @output
     @render.plot
     def show_NEE():
-        return rf(data_prep_model(parse_train()))[2]
+        if model() == 'rf':
+            return rf(data_prep_model(parse_train()))[2]
+        if model() == 'svm':
+            return svm(data_prep_model(parse_train()))[2]
 
     # outputs timeseries graphs with dynamic height
     @output
@@ -287,8 +301,11 @@ def server(input, output, session):
     @output
     @render.plot
     def show_partial_dep():
-        return rf_partialdep(parse_train(), model, input.var2())
-    
+        if model() == 'rf':
+            return rf_partialdep(parse_train(), model, input.var2())
+        if model() == 'svm':
+            return svm_partialdep(parse_train(), model, input.var2())
+
     # outputs partial dependency plots with dynamic height
     @output
     @render.ui

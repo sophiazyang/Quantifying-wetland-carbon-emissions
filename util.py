@@ -19,6 +19,7 @@ from sklearn.model_selection import GridSearchCV
 from sklearn.model_selection import KFold
 from sklearn.linear_model import LinearRegression
 from sklearn.inspection import partial_dependence
+from sklearn.svm import SVR
 
 
 import warnings
@@ -138,7 +139,7 @@ def data_prep_model(df_path: str) -> pd.DataFrame:
 
 
 def rf(df: pd.DataFrame):
-    
+
     df = df.dropna()
     
     # Labels are the values we "want to predict
@@ -232,3 +233,96 @@ def rf_partialdep(df,model,variable):
     ax2.set_ylabel("Partial dependence")
     plt.subplots_adjust(hspace = 0.3)
     return f
+
+
+
+def svm(df: pd.DataFrame):
+    # creates an object of the target variable NEE and an object of independent variables
+    NEE_column = ['NEE'] 
+    predictors_columns = list(set(list(df.columns))-set(NEE_column))
+
+    # normalizing (Edwin)
+    df[predictors_columns] = df[predictors_columns]/df[predictors_columns].max()
+    df.describe().transpose()
+
+    # set x and y (Edwin)
+    X = df[predictors_columns].values
+    y = df[NEE_column].values
+
+    # split data (Edwin)
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.30, random_state=40)
+
+    # create model (Edwin)
+    regressor = SVR(kernel = 'rbf')
+    clf = regressor.fit(X_train, y_train)
+
+    # test model (Edwin)
+    test_set_rsquared = regressor.score(X_test, y_test)
+    # print('Accuracy:',test_set_rsquared)
+
+    # actual v predicted NEE
+    predictions = regressor.predict(X_test)
+    reg = LinearRegression().fit(y_test.reshape((-1, 1)), predictions)
+    a = reg.coef_
+    b = reg.intercept_
+    fig, ax = plt.subplots(1,1,figsize=(9,9))
+    plt.scatter(y_test, predictions)
+    plt.plot([-15,15],[-15,15],color = 'k')
+    plt.plot(y_test, a * y_test + b,color = 'r')
+    plt.xlim([-15, 15])
+    plt.ylim([-15, 15])
+    ax.set_xlabel("NEE")
+    ax.set_ylabel("NEE Estimated")
+
+    # feature importance
+    ### Feature Importance and Partial Dependence
+    dff = df.drop('NEE', axis=1).median()
+    predict_variation = pd.DataFrame(columns = dff.index)
+    arg = pd.DataFrame(columns = dff.index)
+    count = 0
+
+    for index in dff.index:
+        # create variables to store min and max value for "SW_IN"
+        minimum, maximum = df[index].min(), df[index].max()
+
+        # create an evenly spaced array of 100 value between min and max
+        arr = np.linspace(minimum, maximum, num=100)
+
+        # now create lst of all inputs
+        lst = []
+
+        # loop over each variation generated in array
+        for variation in arr:
+            all_vals = list(df.drop('NEE', axis=1).median().values)
+        
+            # replace nth variable column with variation
+            all_vals[count] = variation
+        
+            # append variation with ceteris paribus to list of inputs
+            lst.append(all_vals)
+        
+        # transform lst into numpy array to fit model format for evaluation
+        lst = np.array(lst)
+
+        arg[index] = arr
+        predict_variation[index] = regressor.predict(lst)
+
+        count = count + 1
+
+    impact_dct = {}
+    for index in dff.index:
+        impact = abs(predict_variation[index].max() - predict_variation[index].min())
+        impact_dct[index] = impact
+
+    pd.DataFrame.from_dict(impact_dct, orient='index', columns=['Impact']).sort_values(by="Impact").plot(kind='barh', colormap='viridis')
+    plt.xlabel("Impact on NEE Value")
+    plt.legend().remove()
+    plt.title("ANN Feature Importance on NEE", pad=12)
+
+
+
+    best_param = {'idk'}
+    return best_param, test_set_rsquared, fig, clf
+
+def svm_partialdep():
+    return None
